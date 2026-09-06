@@ -1,0 +1,26 @@
+# Data — never committed. See data/README.md for how to obtain it.
+data/**
+!data/README.md
+!data/.gitkeep
+*.mha
+*.npz
+*.pth
+*.pt
+*.zip
+
+# Generated imagery. The CSVs in results/ carry every number; the PNGs are large
+# and reproducible from the notebooks.
+**/images/
+**/masks/
+**/backgrounds/
+**/detections/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS
+.DS_Store

@@ -1,0 +1,9 @@
+chest,reason
+c0002,"lung: box touches image edge; left lung 86px too narrow: separation 8px, need 44; right lung 89px too narrow: separation 11px, need 44"
+c0004,lung: lung tops very different; box touches image edge
+c0010,lung: box touches image edge
+c0011,lung: box touches image edge
+c0013,"lung: widths 0.43,0.45; heights 0.94,0.85; box touches image edge"
+c0017,"lung: lung tops very different; box touches image edge; left lung 89px too narrow: separation 11px, need 44"
+c0019,"lung: heights 0.76,0.84; box touches image edge"
+c0020,lung: box touches image edge
