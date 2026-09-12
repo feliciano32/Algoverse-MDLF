@@ -9,15 +9,17 @@ files rather than a different run.
 | `grid_v5_ckpt012.zip` | 254 MB | `5a6a2ddb34a55139aed088a9c45bdf9a` |
 | `embeddings.zip` | 8.0 MB | `1e56ec83b734862489bf44bcd30e2aa7` |
 
-Verify with:
+Verify with, from a Colab session with Drive mounted (paths per `DRIVE_LAYOUT.md`):
 
 ```bash
-md5sum 00_DATA/baseline1_checkpoint.pth \
-       01_ARTIFACTS/grid_v5_ckpt012.zip \
-       01_ARTIFACTS/embeddings.zip
+D=/content/drive/MyDrive/Algoverse
+md5sum $D/02_results/00_models/baseline1_checkpoint.pth \
+       $D/01_data/01_grid/_runs/grid_v5_ckpt012.zip \
+       $D/01_data/02_embeddings/embeddings.zip
 ```
 
-(macOS: `md5` rather than `md5sum`.)
+(macOS: `md5` rather than `md5sum`. The `00_DATA/` and `01_ARTIFACTS/` prefixes an earlier
+version of this file used never existed in Drive.)
 
 ## Grid contents
 
