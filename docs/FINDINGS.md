@@ -42,37 +42,139 @@ than to pipeline artefacts or pre-existing structure.
 
 ## 2. Failure predictor ablation
 
-5 repeats, folds split by **source chest** (`source_grouped`). The `stratified` column is
-kept only to show how much leakage the naive split introduced.
+**The committed `results/table-predictor-ablation.csv` is reproducible and citable.** The
+original harness was recovered on 2026-09-12 from `Algoverse_Predictor_Code_Outputs.zip`
+(Dhruv, shared 2026-09-12) and re-run: `biomedclip_full` source-grouped returns **0.816667**
+against the committed 0.8166447, on a different scikit-learn version (1.7.2 vs 1.8.0). Input
+sha256s match `config.json` exactly. Rerun with:
 
-| features | AUROC (source-grouped) | AUROC (stratified) | Brier | dim |
+```bash
+python3 src/failure_predictor_ablation.py --out rerun/predictor
+```
+
+> **Three retractions.** Between the loss of the harness and its recovery I claimed the table
+> was not citable, that `synth_full.npz` and `synth_crop.npz` might have been transposed, and
+> that `biomedclip_full` does not really beat `biomedclip_crop`. **All three were wrong**, and
+> all three came from my reconstruction of the protocol in `notebooks/04` §3 differing from
+> the original in four ways: `StratifiedGroupKFold` instead of plain `KFold` over the 12
+> chest IDs, `solver='lbfgs'` instead of `liblinear`, an 11-column `requested_axes` encoding
+> that I built with 13 columns by wrongly including `position`, and a painted floor of 0.50
+> instead of 0.4919. The `notebooks/04` §8 results computed on the `all_lesion` label are a
+> *different experiment*, not a correction of this one.
+
+### 2.1 The recovered protocol
+
+| | |
+|---|---|
+| cohort | **419 images**, 12 source chests |
+| positives | **23** (5.49%) — `det_edited <= 0.05` |
+| painted floor | `edit_norm > 0.4919`, calibrated on 69 eligible null edits |
+| model | `StandardScaler` per training fold → `LogisticRegression(C=1.0, class_weight='balanced', solver='liblinear', max_iter=5000)`, no tuning |
+| folds | 5 folds × 5 repeats, seed 42 |
+| ungrouped | `StratifiedKFold` over images |
+| grouped | `KFold` over the 12 unique chest IDs, shuffled per repeat, **not label-stratified** |
+
+| features | dim | stratified | source_grouped |
+|---|---|---|---|
+| biomedclip_full | 512 | 0.845 ± 0.013 | **0.817 ± 0.022** |
+| biomedclip_crop | 512 | 0.801 ± 0.025 | 0.750 ± 0.032 |
+| edit_norm | 1 | 0.728 ± 0.005 | 0.727 ± 0.005 |
+| cnr | 1 | 0.725 ± 0.004 | 0.722 ± 0.006 |
+| edit_norm + cnr | 2 | 0.715 ± 0.008 | 0.725 ± 0.007 |
+| requested_axes | 11 | 0.566 ± 0.016 | 0.561 ± 0.019 |
+
+The substantive reading is unchanged from §1: requested axes are near chance, and a single
+scalar (`cnr` 0.722, `edit_norm` 0.727) is close to the 512-dimensional lesion crop (0.750).
+
+**The painted floor does condition on a competing feature.** `edit_norm > 0.4919` truncates
+the variance of `edit_norm` and, by correlation, of `cnr`, so the scalars are handicapped
+relative to the embeddings on this cohort. That is a documented design choice — the original
+SUMMARY.md calls the filter "a proxy rather than a verified lesion annotation" — not an
+error. It does mean the embedding-versus-scalar margin is an upper bound on the embedding's
+advantage. `notebooks/04` §8 quantifies the sensitivity on an unconditioned label.
+
+### 2.2 Detector exposure — a confound worth stating plainly
+
+`config.json` records the detector's own split per source chest. **8 of the 12 source chests
+were in the detector's training set** (c0005 val; c0012, c0018, c0021 test; the rest train).
+
+| | chests | images | failures | rate |
 |---|---|---|---|---|
-| biomedclip_full | **0.817 ± 0.022** | 0.845 ± 0.013 | 0.176 | 512 |
-| biomedclip_crop | 0.750 ± 0.032 | 0.801 ± 0.025 | 0.107 | 512 |
-| edit_norm | 0.727 ± 0.005 | 0.728 ± 0.005 | 0.217 | 1 |
-| cnr | 0.722 ± 0.006 | 0.725 ± 0.004 | 0.212 | 1 |
-| edit_norm + cnr | 0.725 ± 0.007 | 0.715 ± 0.008 | 0.214 | 2 |
-| requested_axes | 0.561 ± 0.019 | 0.566 ± 0.016 | 0.231 | — |
+| train-exposed | 8 | 276 | 20 | 0.0725 |
+| held-out | 4 | 143 | 3 | 0.0210 |
 
-Three things to read off it:
+Fisher exact p = 0.0392, direction **opposite** to the naive expectation — the detector fails
+*more* on chests it trained on. Do not report that as a finding: the held-out arm has **3
+failure events**, and 4 of the 12 chests contain zero failures at all. The interval on a
+3-event rate is wide enough to swallow the effect.
 
-**The requested axes are near chance (0.561).** Consistent with §1.
+What to say instead: the design cannot separate lesion difficulty from detector familiarity,
+because two thirds of the source radiographs were seen during detector training and the
+held-out remainder has too few events to estimate the difference. Grouped predictor folds
+make chests unseen to *the predictor*, not to the detector. The original SUMMARY.md flags
+this qualitatively; the numbers above make it quantitative.
 
-**A single scalar matches a 512-dimensional embedding.** `cnr` alone (0.722) is not
-distinguishable from `biomedclip_crop` (0.750) — t = 1.94. One hand-computed contrast
-measure does the work of the lesion-crop embedding.
+### 2.3 Checklist item 1 — closed
 
-**Whole-image beats crop, and that is the suspicious result.** `biomedclip_full` (0.817)
-clearly beats crop (t = 9.36). The lesion crop contains the lesion; the full image contains
-the lesion *and the source radiograph*. So the gap is the predictor reading chest identity,
-not lesion difficulty — this is checklist item 1 and it is **not yet closed**.
+The concern: `biomedclip_full` beating `biomedclip_crop` could mean the predictor reads the
+source radiograph rather than the lesion.
 
-`biomedclip_full` also has the **worst Brier score** (0.176 vs 0.107 for crop): better
-ranking, worse calibration. Do not report AUROC alone.
+**Computed directly from the original harness's own out-of-fold predictions**
+(`oof_predictions.csv`, source-grouped, averaged over the 5 repeats), so this is not a
+reconstruction:
 
-> Two retractions on the record. I earlier told Feliciano to stop using `edit_inside` as a
-> gate — wrong direction, withdrawn. I also said the crop leaked less than the full image;
-> the 5-repeat data reversed that. Both are corrected above.
+| features | pooled AUROC | within-chest AUROC | chests scorable |
+|---|---|---|---|
+| biomedclip_full | 0.8166 | **0.7933 ± 0.031** | 8/12 |
+| biomedclip_crop | 0.7501 | 0.7584 ± 0.048 | 8/12 |
+| edit_norm | 0.7265 | 0.7652 | 8/12 |
+| cnr | 0.7219 | 0.7595 | 8/12 |
+| requested_axes | 0.5610 | 0.5637 ± 0.021 | 8/12 |
+
+Within-chest AUROC does not collapse — 0.7933 against a pooled 0.8166. Only 8 of 12 chests
+are scorable because four contain no failures at all.
+
+Supporting controls from `notebooks/04` §8, on the reconstructed cohort:
+
+| control | result |
+|---|---|
+| chest-ID decodable from `biomedclip_full` | **1.000** (12-way, chance 0.083) |
+| chest-ID decodable from `biomedclip_crop` | 0.519 |
+| chest-centred embedding, `biomedclip_full` | drop of 0.031 |
+
+The mechanism is real — the whole-image embedding identifies the radiograph perfectly — but
+it is not what carries the prediction. Within-chest AUROC does not collapse.
+
+**The control is calibrated against known answers** (`04` §8.3), which is what makes it
+reportable. Synthetic embeddings with known structure, using the real chest labels and real
+outcomes:
+
+| regime | pooled AUROC | within-chest |
+|---|---|---|
+| A — perfect chest identity, no lesion info | **0.5557** | **0.4901** |
+| B — lesion signal, no chest identity | 1.000 | 1.000 |
+| C — both | 0.9791 | 1.000 |
+| observed, `biomedclip_full` | 0.7435 | 0.8372 |
+
+Regime A is the ceiling on the confound: because `StratifiedGroupKFold` holds out whole
+chests, a chest-identity feature cannot transfer to a held-out chest, so even a *perfect*
+one reaches only 0.556 — despite failure rate genuinely spanning 0.061 to 0.648 across
+chests. The observed 0.7435 is 0.19 above that ceiling. Chest memorisation cannot account
+for the result.
+
+### 2.4 What the preprocessing discovery does *not* touch
+
+Everything in §1 and §2 is a **within-grid** comparison: every arm — lesion, null-edit,
+background, every axis level — went through the same 512 px CLAHE pipeline, because RadEdit
+only operates at 512 and the grid images were generated that way. A constant cannot confound
+a contrast, so the axis effects, the CNR correlation, the controls and this ablation all
+stand as measured.
+
+What it does mean is that the detector is being run **out of distribution** on the grid: it
+was trained on native-resolution, max-normalised, uncropped images (see §5). So absolute
+detection rates on the grid are not the detector's true capability and must not be compared
+directly to real-data sensitivity without equalising preprocessing on both sides. See §5 for
+which numbers need rescoring.
 
 ---
 
@@ -111,7 +213,54 @@ controlled generator comparison, which is the cheapest remaining result in the p
 
 ---
 
+## 4b. The training recipe and split, recovered
+
+Recovered 2026-09-12 from `train_baseline.py`, `algoverse_dataset.py` and `splits.csv`
+(Maia's folder), plus `baseline1_splits.csv` in Dhruv's bundle — byte-identical at 77,012 B.
+**Nothing needs to be rebuilt.**
+
+| | value |
+|---|---|
+| backbone | `fasterrcnn_resnet50_fpn(weights="DEFAULT")` — **COCO-pretrained**, explicitly not the upstream `model.pth` |
+| head | `FastRCNNPredictor`, 2 classes |
+| optimiser | SGD lr 0.005, momentum 0.9, weight decay 0.0005 |
+| schedule | `StepLR` step 3, gamma 0.1 |
+| epochs / batch / seed | 5 / **2** / **42** |
+| train-time aug | `ToTensor` + `RandomHorizontalFlip(0.5)` only |
+| checkpoints | `epoch_{n}.pth`, `{"model":…, "epoch":…}` — hence `baseline1_checkpoint.pth` = epoch 5 |
+| split | `splits.csv`, `img_name` + `split`, generated deterministically by `build_splits.py` from `metadata.csv` |
+
+Our `05` had assumed `weights=None`, batch 4, seed 0. Random init versus COCO fine-tuning is
+not a tuning detail; Baseline 3 would have been incomparable on that alone.
+
+### The preprocessing does not match what our notebooks do
+
+`algoverse_dataset.NoduleDataset` does, per image:
+
+```python
+arr = sitk.GetArrayFromImage(sitk.ReadImage(path)).squeeze()
+arr = arr.astype(np.float32) / max(arr.max(), 1.0)   # max-normalise
+img = Image.fromarray(arr, mode='F')                 # then ToTensor, repeat to 3 channels
+# boxes: [x, y, x+w, y+h] in NATIVE pixels
+```
+
+**No CLAHE. No percentile clipping. No centre crop. No resize** — the model's own
+`GeneralizedRCNNTransform` handles scaling. Our `load_chest` does centre-crop-to-square,
+1/99 percentile clip, CLAHE, and resize to 512 with fractional coordinates. Those are
+different pipelines, and the checkpoint only ever saw the first.
+
+Two consequences beyond distribution shift: the centre crop *discards image content*, and our
+box handling **drops** ground-truth boxes falling outside the crop rather than clamping. On
+the current run none were dropped, so it happened not to matter — but that was luck.
+
 ## 5. Baseline 1 — FROC on real NODE21
+
+> **These numbers are provisional and must be rescored.** They were produced by feeding the
+> checkpoint 512 px, CLAHE, centre-cropped images. §4b shows it was trained on
+> native-resolution, max-normalised, uncropped images. The FROC below is the detector
+> evaluated out of distribution, which is the most likely explanation for 0.67 here against
+> the 0.885/0.889 in the earlier draft. `notebooks/03` now scores **both** pipelines and
+> reports the delta. Nothing in §5 or §6 is citable until that runs.
 
 Frozen detector, 1,133 images (`n0507` dropped as a byte-identical duplicate of `n1059`
 carrying the less complete annotation), 1,474 nodules, centre-in-box matching.

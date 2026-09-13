@@ -7,8 +7,8 @@ Evidence lives in `docs/FINDINGS.md` and `results/`.
 
 | # | item | status | where the answer is |
 |---|---|---|---|
-| 1 | Predictor may be reading the source radiograph, not lesion difficulty | **OPEN — highest risk** | FINDINGS §2 |
-| 2 | Do grid axes, or detector score alone, match 0.885? | **OPEN** | FINDINGS §2 |
+| 1 | Predictor may be reading the source radiograph, not lesion difficulty | **CLOSED** | FINDINGS §2.3 |
+| 2 | Do grid axes, or detector score alone, match 0.885? | **CLOSED** | FINDINGS §2.2 |
 | 3 | 19.9% may be generation failure, not detection failure — needs two controls | **PARTLY CLOSED** | FINDINGS §1, §4 |
 | 4 | Centre-in-box matching vs CheXpert firing | **OPEN** | — |
 | 5 | No positive claim is made anywhere | **OPEN** | — |
@@ -21,31 +21,42 @@ Evidence lives in `docs/FINDINGS.md` and `results/`.
 
 ---
 
-## 1 · Predictor may be reading the source radiograph — OPEN, highest risk
+## 1 · Predictor may be reading the source radiograph — CLOSED
 
-This is the item most likely to sink the paper, and the ablation made it **worse**, not
-better. `biomedclip_full` (0.817) beats `biomedclip_crop` (0.750) with t = 9.36. The crop
-contains the lesion; the full image contains the lesion *and the chest*. A predictor that
-improves when you give it more of the source radiograph is plausibly identifying the chest.
+Tested three ways in `notebooks/04` §8.2 on the 155-positive label, all 12 chests scorable.
+Full evidence in FINDINGS §2.3.
 
-Source-grouped folds prevent the *same chest* appearing on both sides, so this is not fold
-leakage. It is the feature set carrying chest identity.
+The mechanism is real: `biomedclip_full` decodes chest identity at **1.000** (12-way, chance
+0.083), `biomedclip_crop` at 0.519. But it is not what carries the prediction —
+**within-chest AUROC is 0.8032**, not collapsing to 0.5, and chest-centring the embedding
+costs only 0.031.
 
-**What would close it.** A chest-identity control: train on `biomedclip_full` to predict
-**chest ID** rather than detection outcome. If that is near-perfect while detection AUROC is
-0.817, the detection signal may be a shadow of chest identity. Pair with a per-chest
-within-chest AUROC — if the predictor only ranks *across* chests and not *within* a chest,
-it is not measuring lesion difficulty.
+What makes this reportable rather than assertable is §8.3, where the control is calibrated
+against synthetic embeddings of known structure using the real chest labels and outcomes. A
+*perfect* chest-identity embedding reaches pooled AUROC **0.5557** and within-chest 0.4901.
+That is the ceiling, because `StratifiedGroupKFold` holds out whole chests and identity
+cannot transfer to an unseen one. Observed: 0.7435 — 0.19 above the ceiling.
 
-Cheap: the embeddings already exist in `01_data/02_embeddings/`. No generation, no GPU.
+Answer in the paper: chest identity is present in the features, is quantified, and is
+demonstrably not the signal. Report the calibration table alongside the claim.
 
-## 2 · Do grid axes or detector score alone match 0.885? — OPEN
+## 2 · Do grid axes or detector score alone match 0.885? — CLOSED
 
-Half answered. `requested_axes` = 0.561, clearly below. **Detector score alone has not been
-run as a predictor feature.** That is the missing arm and it matters: if raw detector
-confidence predicts failure as well as a 512-d embedding, the embedding contributes nothing.
+`requested_axes` is near chance, consistent with §1 of FINDINGS.
 
-Add a `det_score` row to the ablation ladder. Same harness, one more feature column.
+**"Detector score alone" is ill-posed and was not implemented as asked.** If failure is
+defined by thresholding `det_edited`, feeding `det_edited` in as a feature is circular and
+scores ~1.0. The non-circular substitutes were run instead — `det_background` (the detector's
+score on the *unedited* chest) and `chest_onehot` — and both are degenerate by construction:
+`det_background` is zero for 693 of 720 rows, and `chest_onehot` produces a constant
+prediction on held-out chests, so its AUROC is decided by tie-breaking. Neither is
+reportable as a ladder arm. Noted in the notebook so no one reads the sub-0.5 value as
+inverse signal.
+
+The substantive question — do you need an embedding at all — is answered in FINDINGS §2.2
+and the answer is no. On the unconditioned label `edit_norm` alone scores **0.9212** against
+`biomedclip_full` at 0.7146. A one-dimensional conspicuity measure beats the 512-dimensional
+embedding by 0.08.
 
 ## 3 · 19.9% — generation or detection failure? — PARTLY CLOSED
 
@@ -127,6 +138,16 @@ run whose hyperparameters were never written down, and there is no recorded spli
 both surface, **Baseline 3 cannot be compared to Baseline 1 at all** — any FROC difference
 also contains whatever the recipe and split difference contributes. This is the longest-lead
 dependency in the project and it is not technical.
+
+*Same conversation:* ask who ran the original predictor ablation what its label was, and
+whether `synth_full.npz` and `synth_crop.npz` could have been passed in transposed. Both
+questions are in items 1–2 above and both are cheaper to answer by asking than by inferring.
+
+**If the split never surfaces, retraining Baseline 1 is part of the cost of Baseline 3.** A
+new split plus a new recipe means the existing checkpoint is not a valid comparator, so a
+fair generator comparison needs *both* arms retrained — 12 to 20 GPU-hours against a 12-hour
+session cap, not 6 to 10. Note that the copy-paste vs RadEdit comparison the paper actually
+needs for item 3 is **inference only** and needs no training at all.
 
 **`requirements-lock.txt`** from the session that produced the grid. `requirements.txt` has
 no pins.
