@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MARK = 'CANONICAL DRIVE PATHS'
 END = "print(f'root: {ROOT}')"
 NOTEBOOKS = ['01_generate_grid.ipynb', '02_embeddings.ipynb',
-             '03_baselines.ipynb', '05_baseline3_augmentation.ipynb']
+             '03_baselines.ipynb', '04_predictor_ablation_and_controls.ipynb',
+             '05_baseline3_augmentation.ipynb']
 
 
 def shared_part(text):
