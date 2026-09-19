@@ -14,23 +14,24 @@ That means a layout change has to be made in **three** places — `src/paths.py`
 and the paths cell of each notebook. To catch drift, run:
 
 ```bash
-python src/check_paths_sync.py
+python3 src/check_paths_sync.py
 ```
 
-It compares the block in all four notebooks against this file byte for byte and exits
-non-zero on a mismatch.
+It compares the block in all seven notebooks against this file byte for byte and exits
+non-zero on a mismatch. It has already caught one real bug: `SOURCE` was used by four
+notebooks before it was ever defined in the block.
 
 ## Where the block lives
 
-| notebook | cell | tail after the shared block |
-|---|---|---|
-| `01_generate_grid.ipynb` | after the HF-login/mount cell | `CHECK` only — writes via `RUNS` and `GRID` |
-| `02_embeddings.ipynb` | cell 0 | `CHECK` only — reads `GRID`, writes `EMB_DIR` |
-| `03_baselines.ipynb` | cell 2 | `OUT`/`DEST` = `B1_DIR`, sync helpers |
-| `05_baseline3_augmentation.ipynb` | cell 2 | `OUT`/`DEST` = `B3_DIR`, sync helpers |
-
-`01` and `02` have already been run and their outputs are in Drive; they were repointed so a
-rerun does not recreate the old tree.
+| notebook | what follows the shared block |
+|---|---|
+| `01_generate_grid.ipynb` | input check only — writes via `RUNS` and `GRID` |
+| `02_embeddings.ipynb` | input check only — reads `GRID`, writes `EMB_DIR` |
+| `03_baselines.ipynb` | `OUT`/`DEST` = `B1_DIR`, sync helpers |
+| `04_predictor_ablation_and_controls.ipynb` | `PRED_DIR` |
+| `05_baseline3_augmentation.ipynb` | `OUT`/`DEST` = `B3_DIR`, sync helpers |
+| `06_copypaste_scoring.ipynb` | `OUT`/`DEST` = `02_results/05_copypaste` |
+| `07_knn_coverage.ipynb` | reads `B1_DIR` per-nodule tables, writes `PRED_DIR` |
 
 ---
 
@@ -81,7 +82,8 @@ assert ROOT is not None, (
     'Add shortcut to Drive -> My Drive.')
 
 # --- layout ----------------------------------------------------------------
-NODE21    = ROOT/'01_data'/'00_source'/'node21'
+SOURCE    = ROOT/'01_data'/'00_source'           # node21, chexpert, mimic_cxr
+NODE21    = SOURCE/'node21'
 MHA_SRC   = NODE21/'images'                      # 4,882 .mha
 ANN_CSV   = NODE21/'metadata.csv'                # 5,224 rows, 1,476 label==1
 GRID      = ROOT/'01_data'/'01_grid'
@@ -104,6 +106,7 @@ print(f'root: {ROOT}')
 | name | resolves to |
 |---|---|
 | `ROOT` | `MyDrive/Algoverse` (a shortcut to the shared `Feliciano_Algoverse`) |
+| `SOURCE` | `01_data/00_source` — node21, chexpert, mimic_cxr |
 | `NODE21` / `MHA_SRC` / `ANN_CSV` | `01_data/00_source/node21[/images, /metadata.csv]` |
 | `GRID` / `GRID_CSV` | `01_data/01_grid[/grid_v5.csv]` |
 | `RUNS` | `01_data/01_grid/_runs` — generation checkpoint zips, not data |
@@ -120,6 +123,10 @@ print(f'root: {ROOT}')
 
 > In `02_embeddings.ipynb`, `GRID` is reassigned to the local copy (`/content/grid`) after
 > the copy cell runs. That is deliberate and commented at the point it happens.
+
+> `splits.csv` / `baseline1_splits.csv` is **not** in the block, because it is not yet in a
+> fixed location. `03` and `05` look under `SOURCE` first, then glob, then refuse. Put it at
+> `01_data/00_source/baseline1_splits.csv` and that stops being a search.
 
 ---
 
