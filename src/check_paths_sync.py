@@ -19,7 +19,7 @@ END = "print(f'root: {ROOT}')"
 NOTEBOOKS = ['01_generate_grid.ipynb', '02_embeddings.ipynb',
              '03_baselines.ipynb', '04_predictor_ablation_and_controls.ipynb',
              '05_baseline3_augmentation.ipynb', '06_copypaste_scoring.ipynb',
-             '07_knn_coverage.ipynb']
+             '07_knn_coverage.ipynb', '08_revision_run.ipynb']
 
 
 def shared_part(text):
